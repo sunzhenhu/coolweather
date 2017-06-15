@@ -1,11 +1,14 @@
 package com.example.administrator.coolweather;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -17,6 +20,7 @@ import com.example.administrator.coolweather.util.HttpUtil;
 import com.example.administrator.coolweather.util.Utility;
 
 import java.io.IOException;
+import java.util.Date;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -35,21 +39,37 @@ public class WeatherActivity extends AppCompatActivity {
     private TextView comfortText;
     private TextView carWashText;
     private TextView sportText;
+    private Button chooseButton;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_weather);
         init();
+
+//      需要做更新数据
+
         SharedPreferences prefs= PreferenceManager.getDefaultSharedPreferences(this);
         String weatherString=prefs.getString("weather",null);
+        long oldDate=prefs.getLong("date", Long.parseLong(String.valueOf(System.currentTimeMillis())));
+        Log.i("过去保存时间",String.valueOf(oldDate));
         if (weatherString!=null){
             Weather weather= Utility.handleWeatherResponse(weatherString);
-            showWeatherInfo(weather);
+            String weatherId=weather.basic.weatherId;
+            long newDate=System.currentTimeMillis();
+            if (newDate-oldDate>7200000){
+                Log.i("重新请求",">7200");
+                requestWeather(weatherId);
+            }else {
+                Log.i("从数据中拿","<7200");
+                showWeatherInfo(weather);
+            }
+
         }else {
             String weatherId=getIntent().getStringExtra("weather_id");
             weatherLayout.setVisibility(View.INVISIBLE);
             requestWeather(weatherId);
         }
+
 
     }
     private void init(){
@@ -64,10 +84,23 @@ public class WeatherActivity extends AppCompatActivity {
         comfortText= (TextView) findViewById(R.id.comfort_text);
         carWashText= (TextView) findViewById(R.id.car_wash_text);
         sportText= (TextView) findViewById(R.id.sport_text);
+        chooseButton= (Button) findViewById(R.id.chose_button);
+
+        chooseButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                SharedPreferences.Editor editor=PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
+                editor.putString("weather",null);
+                editor.apply();
+                Intent intent=new Intent(WeatherActivity.this,MainActivity.class);
+                startActivity(intent);
+                finish();
+            }
+        });
     }
 
     private void requestWeather(final String weatherId){
-        String weatherUrl="http://guolin.tech/api/weather?cityid="+weatherId+"&key=12f8e839ddb646fbbc2cb2e5c8b6dc11";
+        String weatherUrl="http://guolin.tech/api/weather?cityid="+weatherId+"&key=bc0418b57b2d4918819d3974ac1285d9";
         HttpUtil.sendOkHttpRequest(weatherUrl, new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -76,6 +109,7 @@ public class WeatherActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         Toast.makeText(WeatherActivity.this,"获取天气信息失败",Toast.LENGTH_SHORT).show();
+                        Log.i("查询天气失败","yes");
                     }
                 });
             }
@@ -87,9 +121,11 @@ public class WeatherActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        if (weather!=null && "ok".equals(weather.status)){
+                        if (weather!=null&&"ok".equals(weather.status)){
+                            long date=System.currentTimeMillis();
                             SharedPreferences.Editor editor=PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
                             editor.putString("weather",responseText);
+                            editor.putLong("date",date);
                             editor.apply();
                             showWeatherInfo(weather);
                         }else {
@@ -102,9 +138,12 @@ public class WeatherActivity extends AppCompatActivity {
     }
     private void showWeatherInfo(Weather weather){
         String cityName=weather.basic.cityName;
-        String updateTime=weather.basic.update.updateTime.split("")[1];
+        String updateTime=weather.basic.update.updateTime.split(" ")[1];
         String degree=weather.now.temperature+"°C";
         String weatherInfo=weather.now.more.info;
+
+
+
         titleCity.setText(cityName);
         titleUpdateTime.setText(updateTime);
         degreeText.setText(degree);
@@ -129,6 +168,7 @@ public class WeatherActivity extends AppCompatActivity {
         String comfort="舒适度:"+weather.suggestion.comfort.info;
         String carWash="洗车指数:"+weather.suggestion.carWash.info;
         String sport="运动建议:"+weather.suggestion.sport.info;
+
         comfortText.setText(comfort);
         carWashText.setText(carWash);
         sportText.setText(sport);
